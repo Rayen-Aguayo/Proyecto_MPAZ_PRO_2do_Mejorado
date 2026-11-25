@@ -2,13 +2,18 @@ package com.example.escuela_escritora_marcela_paz.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
-import androidx.room.Query
+import androidx.room.OnConflictStrategy
+import androidxs.room.Query
 import com.example.escuela_escritora_marcela_paz.entity.Usuario
 
 @Dao
 interface UsuarioDao {
     @Insert
     suspend fun insertar(usuario: Usuario)
+
+    /** Guarda (o reemplaza) el usuario que llegó del servidor, usándolo como copia local. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardar(usuario: Usuario)
 
     @Query("SELECT * FROM usuarios WHERE username = :username LIMIT 1")
     suspend fun buscarPorUsername(username: String): Usuario?

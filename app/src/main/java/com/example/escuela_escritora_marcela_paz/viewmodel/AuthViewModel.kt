@@ -9,6 +9,7 @@ import com.example.escuela_escritora_marcela_paz.repository.UsuarioRepository
 import com.example.escuela_escritora_marcela_paz.session.SesionDataStore
 import com.example.escuela_escritora_marcela_paz.util.Roles
 import com.example.escuela_escritora_marcela_paz.util.Validadores
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 
 data class AuthErrores(
     val nombre: String? = null,
@@ -94,12 +96,16 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _cargando.value = true
             try {
-                val creado = repositorio.registrar(nombre, username, clave, rol, curso)
-                if (creado) {
-                    _registroExitoso.value = true
-                } else {
-                    _errores.value = errores.copy(username = "Ese usuario ya existe")
+                repositorio.registrarRemoto(nombre, username, clave, rol, curso)
+                _registroExitoso.value = true
+            } catch (e: HttpException) {
+                _errores.value = when (e.code()) {
+                    409 -> errores.copy(username = "Ese usuario ya existe")
+                    400 -> errores.copy(general = "Los datos no son válidos para el servidor")
+                    else -> errores.copy(general = "Error del servidor (${e.code()})")
                 }
+            } catch (e: IOException) {
+                _errores.value = errores.copy(general = "No se pudo conectar con el servidor")
             } catch (e: Exception) {
                 _errores.value = errores.copy(general = "No se pudo completar el registro")
             } finally {
@@ -119,18 +125,35 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _cargando.value = true
             try {
-                val encontrado = repositorio.login(username, clave)
-                if (encontrado == null) {
-                    _errores.value = AuthErrores(general = "Usuario o clave incorrectos")
+                val remota = repositorio.loginRemoto(username, clave)
+                sesion.guardarSesion(
+                    remota.usuario.id, remota.usuario.rol, remota.usuario.nombre, remota.token
+                )
+                _usuario.value = remota.usuario
+            } catch (e: HttpException) {
+                _errores.value = if (e.code() == 401) {
+                    AuthErrores(general = "Usuario o clave incorrectos")
                 } else {
-                    sesion.guardarSesion(encontrado.id, encontrado.rol, encontrado.nombre)
-                    _usuario.value = encontrado
+                    AuthErrores(general = "Error del servidor (${e.code()})")
                 }
+            } catch (e: IOException) {
+                // Sin conexión con el servidor: se intenta con las cuentas locales de prueba.
+                iniciarSesionLocal(username, clave)
             } catch (e: Exception) {
                 _errores.value = AuthErrores(general = "No se pudo iniciar sesión")
             } finally {
                 _cargando.value = false
             }
+        }
+    }
+
+    private suspend fun iniciarSesionLocal(username: String, clave: String) {
+        val local = repositorio.login(username, clave)
+        if (local == null) {
+            _errores.value = AuthErrores(general = "No se pudo conectar con el servidor")
+        } else {
+            sesion.guardarSesion(local.id, local.rol, local.nombre)
+            _usuario.value = local
         }
     }
 
