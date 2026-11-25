@@ -3,7 +3,7 @@ package com.example.escuela_escritora_marcela_paz.data.local.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
-import androidxs.room.Query
+import androidx.room.Query
 import com.example.escuela_escritora_marcela_paz.entity.Usuario
 
 @Dao
